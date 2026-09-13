@@ -30,15 +30,15 @@ public abstract class Cliente {
     public int calcularValorTotalTiquetes( )
     {
         int total = 0;
-
-        for(Tiquete tiquete : tiquetesSinUsar)
+        for( Tiquete tiquete : tiquetesSinUsar )
         {
-            total += tiquete.getTarifa( );
+            if( !tiquete.esUsado( ) )
+            {
+                total += tiquete.getTarifa( );
+            }
         }
-
         return total;
     }
-
     public void usarTiquetes( Vuelo vuelo )
     {
         Iterator<Tiquete> iterator=tiquetesSinUsar.iterator( );

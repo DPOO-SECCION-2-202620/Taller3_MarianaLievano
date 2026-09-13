@@ -56,6 +56,10 @@ public class Vuelo {
         }
         return tarifa*cantidad;
     }
+    public void registrarTiqueteCargado(Tiquete tiquete )
+    {
+        tiquetes.put(tiquete.getCodigo( ), tiquete );
+    }
     @Override
     public boolean equals(Object obj) {
         if(this == obj)
