@@ -1,14 +1,8 @@
 package uniandes.dpoo.aerolinea.modelo;
-
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import uniandes.dpoo.aerolinea.exceptions.InformacionInconsistenteException;
 import uniandes.dpoo.aerolinea.exceptions.VueloSobrevendidoException;
 import uniandes.dpoo.aerolinea.modelo.cliente.Cliente;
@@ -17,6 +11,16 @@ import uniandes.dpoo.aerolinea.persistencia.IPersistenciaAerolinea;
 import uniandes.dpoo.aerolinea.persistencia.IPersistenciaTiquetes;
 import uniandes.dpoo.aerolinea.persistencia.TipoInvalidoException;
 import uniandes.dpoo.aerolinea.tiquetes.Tiquete;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import uniandes.dpoo.aerolinea.modelo.tarifas.CalculadoraTarifas;
+import uniandes.dpoo.aerolinea.modelo.tarifas.CalculadoraTarifasTemporadaAlta;
+import uniandes.dpoo.aerolinea.modelo.tarifas.CalculadoraTarifasTemporadaBaja;
 
 /**
  * En esta clase se organizan todos los aspectos relacionados con una Aerolínea.
@@ -279,9 +283,106 @@ public class Aerolinea
      */
     public void programarVuelo( String fecha, String codigoRuta, String nombreAvion ) throws Exception
     {
-        // TODO Implementar el método
-    }
+    	Ruta ruta = getRuta( codigoRuta );
 
+        if( ruta == null )
+        {
+            throw new Exception(
+                    "No existe una ruta con código " + codigoRuta );
+        }
+
+        Avion avion = null;
+
+        for( Avion candidato : aviones )
+        {
+            if( candidato.getNombre( ).equals( nombreAvion ) )
+            {
+                avion = candidato;
+                break;
+            }
+        }
+
+        if( avion == null )
+        {
+            throw new Exception(
+                    "No existe un avión con nombre " + nombreAvion );
+        }
+
+        if( getVuelo( codigoRuta, fecha ) != null )
+        {
+            throw new Exception(
+                    "Ya existe un vuelo de la ruta "
+                    + codigoRuta + " en la fecha " + fecha );
+        }
+
+        LocalDate fechaNueva = LocalDate.parse( fecha );
+
+        LocalTime horaSalidaNueva = LocalTime.of(
+                Ruta.getHoras( ruta.getHoraSalida( ) ),
+                Ruta.getMinutos( ruta.getHoraSalida( ) ) );
+
+        LocalTime horaLlegadaNueva = LocalTime.of(
+                Ruta.getHoras( ruta.getHoraLlegada( ) ),
+                Ruta.getMinutos( ruta.getHoraLlegada( ) ) );
+
+        LocalDateTime inicioNuevo =
+                LocalDateTime.of( fechaNueva, horaSalidaNueva );
+
+        LocalDateTime finNuevo =
+                LocalDateTime.of( fechaNueva, horaLlegadaNueva );
+
+        if( !finNuevo.isAfter( inicioNuevo ) )
+        {
+            finNuevo = finNuevo.plusDays( 1 );
+        }
+
+        for( Vuelo existente : vuelos )
+        {
+            if( existente.getAvion( ).getNombre( ).equals( nombreAvion ) )
+            {
+                Ruta rutaExistente = existente.getRuta( );
+
+                LocalDate fechaExistente =
+                        LocalDate.parse( existente.getFecha( ) );
+
+                LocalDateTime inicioExistente =
+                        LocalDateTime.of(
+                                fechaExistente,
+                                LocalTime.of(
+                                        Ruta.getHoras(
+                                                rutaExistente.getHoraSalida( ) ),
+                                        Ruta.getMinutos(
+                                                rutaExistente.getHoraSalida( ) ) ) );
+
+                LocalDateTime finExistente =
+                        LocalDateTime.of(
+                                fechaExistente,
+                                LocalTime.of(
+                                        Ruta.getHoras(
+                                                rutaExistente.getHoraLlegada( ) ),
+                                        Ruta.getMinutos(
+                                                rutaExistente.getHoraLlegada( ) ) ) );
+
+                if( !finExistente.isAfter( inicioExistente ) )
+                {
+                    finExistente = finExistente.plusDays( 1 );
+                }
+
+                boolean seCruzan =
+                        inicioNuevo.isBefore( finExistente )
+                        && inicioExistente.isBefore( finNuevo );
+
+                if( seCruzan )
+                {
+                    throw new Exception(
+                            "El avión " + nombreAvion
+                            + " ya está ocupado durante ese intervalo" );
+                }
+            }
+        }
+
+        vuelos.add( new Vuelo( ruta, fecha, avion ) );
+    }
     /**
      * Vende una cierta cantidad de tiquetes para un vuelo, verificando que la información sea correcta.
      * 
@@ -299,8 +400,46 @@ public class Aerolinea
      */
     public int venderTiquetes( String identificadorCliente, String fecha, String codigoRuta, int cantidad ) throws VueloSobrevendidoException, Exception
     {
-        // TODO Implementar el método
-        return -1;
+    	Cliente cliente = getCliente( identificadorCliente );
+
+        if( cliente == null )
+        {
+            throw new Exception(
+                    "No existe el cliente " + identificadorCliente );
+        }
+
+        if( cantidad <= 0 )
+        {
+            throw new Exception(
+                    "La cantidad de tiquetes debe ser positiva" );
+        }
+
+        Vuelo vuelo = getVuelo( codigoRuta, fecha );
+
+        if( vuelo == null )
+        {
+            throw new Exception(
+                    "No existe el vuelo " + codigoRuta
+                    + " para la fecha " + fecha );
+        }
+
+        int mes = LocalDate.parse( fecha ).getMonthValue( );
+
+        CalculadoraTarifas calculadora;
+
+        if( ( mes >= 1 && mes <= 5 )
+                || ( mes >= 9 && mes <= 11 ) )
+        {
+            calculadora =
+                    new CalculadoraTarifasTemporadaBaja( );
+        }
+        else
+        {
+            calculadora =
+                    new CalculadoraTarifasTemporadaAlta( );
+        }
+
+        return vuelo.venderTiquetes(cliente,calculadora,cantidad );
     }
 
     /**
@@ -310,7 +449,15 @@ public class Aerolinea
      */
     public void registrarVueloRealizado( String fecha, String codigoRuta )
     {
-        // TODO Implementar el método
+    	Vuelo vuelo = getVuelo( codigoRuta, fecha );
+
+        if( vuelo == null ){
+            return;
+        }
+
+        for( Cliente cliente:clientes.values()){
+            cliente.usarTiquetes( vuelo );
+        }
     }
 
     /**
@@ -320,8 +467,15 @@ public class Aerolinea
      */
     public String consultarSaldoPendienteCliente( String identificadorCliente )
     {
-        // TODO Implementar el método
-        return "";
+    	Cliente cliente =
+                getCliente( identificadorCliente );
+
+        if( cliente==null)
+        {
+            return "0";
+        }
+        return String.valueOf(
+                cliente.calcularValorTotalTiquetes( ) );
     }
 
 }
